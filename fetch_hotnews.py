@@ -206,15 +206,27 @@ def main():
         print("FAILED: sampleHotNews 区块未替换 (n=%d)" % n)
         sys.exit(3)
     # 二级页《盘点今日热点》：六主题各取 Top（最多 6 条，最新+最热+有爆点）
+    # 若某主题真实条目 < 3，先按弱相关关键词补，仍不足则用当日真实池未使用较高分词条补齐到 3（避免跨主题重复）
     topics = []
+    used_titles = set()
     for tag, cls, base in THEMES:
         arr = sorted(buckets.get(tag, []), key=lambda x: -x["score"])
-        if not arr:
+        if len(arr) < 3:
             weak = WEAK.get(tag, [])
-            cand = [p for p in pool if any(k in (p["title"] + p["summary"]) for k in weak)]
+            cand = [p for p in pool if id(p) not in [id(x) for x in arr] and any(k in (p["title"] + p["summary"]) for k in weak)]
             cand.sort(key=lambda x: -x["score"])
-            arr = cand
-        items = [{"title": p["title"], "summary": p["summary"], "time": p["time"], "url": p["url"], "dir": p["dir"], "highlight": False} for p in arr[:6]]
+            arr = arr + cand
+        if len(arr) < 3:
+            g = [p for p in pool if id(p) not in [id(x) for x in arr] and p["title"] not in used_titles]
+            g.sort(key=lambda x: -x["score"])
+            arr = arr + g
+        arr = arr[:6]
+        items = []
+        for p in arr:
+            if p["title"] in used_titles:
+                continue
+            used_titles.add(p["title"])
+            items.append({"title": p["title"], "summary": p["summary"], "time": p["time"], "url": p["url"], "dir": p["dir"], "highlight": False})
         topics.append({"theme": tag, "cls": cls, "items": items})
     topics_json = json.dumps(topics, ensure_ascii=False).replace("</", "<\\/")
     newblock_t = "var sampleHotTopics=" + topics_json + ";\n"
